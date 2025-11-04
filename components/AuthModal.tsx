@@ -20,17 +20,14 @@ import {
 
 // 1. Import useRouter from Expo Router
 import { useRouter } from 'expo-router';
+import { forgotPassword, loginUser, registerUser, resendOtp, resetPassword, verifyEmail } from '../utils/apiAuth';
+import { UserRole } from '../utils/endpoints';
 
 const { width, height } = Dimensions.get('window');
 
-// API endpoint map (Placeholder - replace with your actual API endpoint)
-const API_MAP = {
-  Farmer: 'https://agrofarm-vd8i.onrender.com/api/farmers',
-  Buyer: 'https://agrofarm-vd8i.onrender.com/api/buyers',
-  Supplier: 'https://agrofarm-vd8i.onrender.com/api/suppliers',
-};
+// API endpoints are wired via utils/apiAuth and utils/endpoints
 
-type Role = 'Farmer' | 'Buyer' | 'Supplier';
+type Role = UserRole;
 type AuthStep = 'auth' | 'forgot' | 'reset' | 'otp';
 
 interface AuthModalProps {
@@ -137,7 +134,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
     return true;
   };
 
-  // --- MOCK API Call Logic with Navigation ---
+  // --- Real API Call Logic with Navigation ---
   const handleAuth = async () => {
     Keyboard.dismiss();
     if (!validateForm()) return;
@@ -145,52 +142,24 @@ const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
     setLoading(true);
     
     try {
-      console.log(`Attempting ${isSignup ? 'Signup' : 'Login'} for ${role}...`);
-      
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 1500)); 
-      const apiBase = API_MAP[role];
-      if (!apiBase) throw new Error("Invalid role selected");
-
-      const endpoint = isSignup ? `${apiBase}/new` : `${apiBase}/login`;
-
-      const body = isSignup
-        ? {
-            name: formData.name,
-            email: formData.email,
-            password: formData.password,
-            phone: formData.phone,
-            address: formData.address,
-          }
-        : {
-            email: formData.email,
-            password: formData.password,
-          };
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        credentials: "include",
-      });
-      const data = await response.json();
-      if (!response.ok)
-        throw new Error(data.message || "Authentication failed");
       if (isSignup) {
-
+        await registerUser(role, {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          phone: formData.phone,
+          address: formData.address,
+        });
         setSuccessMessage(`✅ Registered as ${role}! Please verify your email.`);
         setStep('otp');
-        
       } else {
+        await loginUser(role, { email: formData.email, password: formData.password });
         setSuccessMessage(`✅ Logged in successfully as ${role}!`);
-        
-        // 3. IMPLEMENT REDIRECTION BASED ON ROLE
         const dashboardPath = `/${role.toLowerCase()}`;
-
         setTimeout(() => {
-          onClose(); // Close modal first
-          // Use router.replace() to prevent the user from navigating back to the landing page via the back button
-          router.replace(dashboardPath); 
-        }, 1000); // Wait briefly for success message visibility
+          onClose();
+          (router as any).replace(dashboardPath);
+        }, 800);
       }
 
     } catch (error) {
@@ -199,7 +168,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
       setLoading(false);
     }
   };
-  // --- End Mock API Call Logic with Navigation ---
+  // --- End Real API Call Logic with Navigation ---
   
   const handleVerifyOTP = async () => {
     Keyboard.dismiss();
@@ -208,18 +177,32 @@ const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
       return;
     }
     setLoading(true);
-    
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    if (otp === '1234') { 
+    try {
+      await verifyEmail(role, formData.email, otp);
       setSuccessMessage('✅ Email verified! Please log in.');
       setTimeout(() => {
         setStep('auth');
         setIsSignup(false);
-      }, 1500);
-    } else {
-      setErrorMessage('❌ Invalid OTP. Please try again.');
+      }, 800);
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : 'Verification failed');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const handleResendOtp = async () => {
+    Keyboard.dismiss();
+    if (!formData.email) { setErrorMessage('Enter your email first'); return; }
+    setLoading(true);
+    try {
+      await resendOtp(role, formData.email);
+      setSuccessMessage('OTP resent to your email');
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : 'Failed to resend OTP');
+    } finally {
+      setLoading(false);
+    }
   };
 
 
@@ -308,7 +291,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
   const renderOTPForm = () => (
     <View style={styles.formContainer}>
       <Text style={styles.resetText}>
-        We've sent a 4-digit code to {formData.email}
+        We've sent a 6-digit code to {formData.email}
       </Text>
       
       <TextInput
@@ -316,7 +299,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
         placeholder="Enter OTP"
         placeholderTextColor="#9ca3af"
         keyboardType="numeric"
-        maxLength={4}
+        maxLength={6}
         value={otp}
         onChangeText={setOtp}
       />
@@ -343,7 +326,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
 
         <TouchableOpacity
           style={[styles.resendButton, { flex: 1 }]}
-          onPress={() => console.log('Resend OTP')} // Implement resend logic
+          onPress={handleResendOtp}
           disabled={loading}
         >
           <Text style={styles.resendButtonText}>Resend OTP</Text>
@@ -414,11 +397,45 @@ const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
       case 'otp':
         return renderOTPForm();
       case 'forgot':
-      case 'reset':
-        return renderGenericForm('Forgot/Reset Password', 'Submit', async () => {}, (
+        return renderGenericForm('Forgot Password', 'Send OTP', async () => {
+          Keyboard.dismiss();
+          setLoading(true);
+          setErrorMessage(''); setSuccessMessage('');
+          try {
+            if (!formData.email || !formData.phone) { setErrorMessage('Email and phone are required'); return; }
+            await forgotPassword(role, formData.email, formData.phone);
+            setSuccessMessage('OTP sent to your email/phone');
+            setStep('reset');
+          } catch (e) {
+            setErrorMessage(e instanceof Error ? e.message : 'Failed to send OTP');
+          } finally {
+            setLoading(false);
+          }
+        }, (
           <>
-            <TextInput style={styles.input} placeholder="Email or Phone" placeholderTextColor="#9ca3af" />
-            <Text style={styles.resetText}>This is a placeholder step.</Text>
+            <TextInput style={styles.input} placeholder="Email" placeholderTextColor="#9ca3af" keyboardType="email-address" autoCapitalize="none" value={formData.email} onChangeText={(t) => handleChange('email', t)} />
+            <TextInput style={styles.input} placeholder="Phone" placeholderTextColor="#9ca3af" keyboardType="phone-pad" value={formData.phone} onChangeText={(t) => handleChange('phone', t)} />
+          </>
+        ));
+      case 'reset':
+        return renderGenericForm('Reset Password', 'Reset', async () => {
+          Keyboard.dismiss();
+          setLoading(true);
+          setErrorMessage(''); setSuccessMessage('');
+          try {
+            if (!formData.email || !formData.phone || !otp || !newPassword) { setErrorMessage('All fields are required'); return; }
+            await resetPassword(role, formData.email, formData.phone, otp, newPassword);
+            setSuccessMessage('Password updated. Please login.');
+            setTimeout(() => { setStep('auth'); setIsSignup(false); }, 800);
+          } catch (e) {
+            setErrorMessage(e instanceof Error ? e.message : 'Failed to reset password');
+          } finally {
+            setLoading(false);
+          }
+        }, (
+          <>
+            <TextInput style={styles.input} placeholder="OTP" placeholderTextColor="#9ca3af" keyboardType="numeric" value={otp} onChangeText={setOtp} />
+            <TextInput style={styles.input} placeholder="New Password" placeholderTextColor="#9ca3af" secureTextEntry value={newPassword} onChangeText={setNewPassword} />
           </>
         ));
       case 'auth':

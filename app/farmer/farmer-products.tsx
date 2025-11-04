@@ -1,7 +1,6 @@
 // app/farmer/farmer-products.tsx
 
 import { Ionicons } from "@expo/vector-icons";
-import axios from "axios";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -16,6 +15,7 @@ import {
     TouchableOpacity,
     View
 } from "react-native";
+import { addProduct, getMyProducts, ProductInput } from "../../utils/apiProducts";
 
 const { width } = Dimensions.get('window');
 
@@ -32,10 +32,6 @@ interface Product {
     images?: string[];
 }
 
-const API_URL = "https://agrofarm-vd8i.onrender.com/api/products/productForFarmer";
-const CART_API = "https://agrofarm-vd8i.onrender.com/api/cart/add";
-const WISHLIST_API = "https://agrofarm-vd8i.onrender.com/api/wishlist/add";
-
 const categories = [
     { id: "all", name: "All Products" },
     { id: "fruits", name: "Fruits" },
@@ -45,13 +41,26 @@ const categories = [
     { id: "fertilizer", name: "Fertilizer" },
 ];
 
+const categoryMatchKey = (tabId: string) => {
+    switch (tabId) {
+        case 'vegetables': return 'veg';
+        case 'fruits': return 'fruits';
+        case 'crops': return 'crops';
+        case 'pesticides': return 'pesticides';
+        case 'fertilizer': return 'fertilizer';
+        default: return '';
+    }
+};
+
 const FarmerProductsScreen = () => {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [searchTerm, setSearchTerm] = useState("");
     const [activeTab, setActiveTab] = useState("all");
-    const [wishlistItems, setWishlistItems] = useState<string[]>([]); // Array of product IDs in wishlist
+    const [wishlistItems, setWishlistItems] = useState<string[]>([]); // Array of product IDs in wishlist (not used here)
+    const [isAddOpen, setIsAddOpen] = useState(false);
+    const [newProduct, setNewProduct] = useState({ name: '', price: '', quantity: '', unit: '', category: '', description: '', imageUrl: '' });
     const router = useRouter();
 
     // Replaces react-toastify
@@ -64,13 +73,8 @@ const FarmerProductsScreen = () => {
             setLoading(true);
             setError("");
 
-            const response = await axios.get(API_URL, { withCredentials: true });
-
-            if (response.status !== 200) {
-                throw new Error(response.data.message || "Failed to fetch products");
-            }
-
-            setProducts(response.data.products || []);
+            const data = await getMyProducts();
+            setProducts(Array.isArray(data?.products) ? data.products : []);
         } catch (err: any) {
             setError(err.message || "Error loading products");
         } finally {
@@ -78,32 +82,40 @@ const FarmerProductsScreen = () => {
         }
     };
 
-    const addToCart = async (productId: string, quantity = 1) => {
-        try {
-            const response = await axios.post(CART_API, { productId, quantity }, { withCredentials: true });
-
-            if (response.status !== 200) {
-                throw new Error(response.data.message || "Failed to add to cart");
-            }
-
-            showToast(response.data.message || "Product added to cart successfully");
-        } catch (err: any) {
-            showToast(err.message || "Error adding to cart", true);
-        }
+    const addToCart = async (_productId: string, _quantity = 1) => {
+        showToast("Cart not available on My Products");
     };
 
-    const addToWishlist = async (productId: string) => {
+    const addToWishlist = async (_productId: string) => {
+        showToast("Wishlist not available on My Products");
+    };
+
+    const handleAddProduct = async () => {
+        if (!newProduct.name || !newProduct.price || !newProduct.quantity || !newProduct.unit) {
+            showToast('Please fill all required fields', true);
+            return;
+        }
         try {
-            const response = await axios.post(WISHLIST_API, { productId }, { withCredentials: true });
-
-            if (response.status !== 200) {
-                throw new Error(response.data.message || "Failed to add to wishlist");
-            }
-
-            setWishlistItems(prev => [...prev, productId]);
-            showToast(response.data.message || "Product added to wishlist successfully");
-        } catch (err: any) {
-            showToast(err.message || "Error adding to wishlist", true);
+            setLoading(true);
+            const payload: ProductInput = {
+                name: newProduct.name,
+                description: newProduct.description || '',
+                price: parseFloat(newProduct.price),
+                unit: newProduct.unit,
+                quantity: parseInt(newProduct.quantity),
+                category: newProduct.category || undefined,
+                images: newProduct.imageUrl ? [newProduct.imageUrl] : [],
+            };
+            await addProduct(payload);
+            const refreshed = await getMyProducts();
+            setProducts(Array.isArray(refreshed?.products) ? refreshed.products : []);
+            setIsAddOpen(false);
+            setNewProduct({ name: '', price: '', quantity: '', unit: '', category: '', description: '', imageUrl: '' });
+            showToast('Product added');
+        } catch (e: any) {
+            showToast(e?.message || 'Failed to add product', true);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -122,8 +134,9 @@ const FarmerProductsScreen = () => {
             description.includes(searchTermLower) ||
             category.includes(searchTermLower);
 
-        const matchesCategory =
-            activeTab === "all" || category.includes(activeTab.toLowerCase());
+        const matchesCategory = activeTab === 'all'
+            ? true
+            : category === categoryMatchKey(activeTab);
 
         return matchesSearch && matchesCategory;
     });
@@ -151,7 +164,12 @@ const FarmerProductsScreen = () => {
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentPadding}>
-            <Text style={styles.pageTitle}>Browse Supplies</Text>
+            <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+                <Text style={styles.pageTitle}>My Products</Text>
+                <TouchableOpacity onPress={() => setIsAddOpen(true)} style={{backgroundColor:'#16a34a', paddingHorizontal:12, paddingVertical:8, borderRadius:8}}>
+                    <Text style={{color:'white', fontWeight:'600'}}>Add Product</Text>
+                </TouchableOpacity>
+            </View>
 
             {/* Search Input */}
             <View style={styles.searchContainer}>
@@ -193,7 +211,7 @@ const FarmerProductsScreen = () => {
                     <Text style={styles.noProductsTitle}>No products found</Text>
                     <Text style={styles.noProductsText}>
                         {products.length === 0
-                            ? "There are currently no products available."
+                            ? "You haven't added any products yet."
                             : "No products match your search criteria."}
                     </Text>
                 </View>
@@ -203,8 +221,7 @@ const FarmerProductsScreen = () => {
                         <TouchableOpacity 
                             key={product._id} 
                             style={styles.productCard}
-                            // Navigate to product detail page (You need to set up app/farmer/product/[id].tsx route)
-                            onPress={() => router.push({ pathname: "/farmer/product/[id]", params: { id: product._id } })} 
+                            onPress={() => (router as any).push({ pathname: "/farmer/product/[id]", params: { id: product._id } })} 
                         >
                             <View style={styles.imageWrapper}>
                                 {product.images?.[0] ? (
@@ -261,6 +278,37 @@ const FarmerProductsScreen = () => {
                             </View>
                         </TouchableOpacity>
                     ))}
+                </View>
+            )}
+            {/* Simple Add Product Drawer */}
+            {isAddOpen && (
+                <View style={{position:'absolute', left:0, right:0, bottom:0, backgroundColor:'white', borderTopLeftRadius:16, borderTopRightRadius:16, padding:16, borderWidth:1, borderColor:'#d1d5db'}}>
+                    <Text style={{fontSize:16, fontWeight:'700', marginBottom:10}}>New Product</Text>
+                    <TextInput placeholder="Name" style={styles.input} value={newProduct.name} onChangeText={(t)=>setNewProduct(p=>({...p,name:t}))} />
+                    <TextInput placeholder="Price" keyboardType="numeric" style={styles.input} value={newProduct.price} onChangeText={(t)=>setNewProduct(p=>({...p,price:t}))} />
+                    <TextInput placeholder="Quantity" keyboardType="numeric" style={styles.input} value={newProduct.quantity} onChangeText={(t)=>setNewProduct(p=>({...p,quantity:t}))} />
+                    <TextInput placeholder="Unit (e.g., kg, bag)" style={styles.input} value={newProduct.unit} onChangeText={(t)=>setNewProduct(p=>({...p,unit:t}))} />
+                    {/* Category dropdown */}
+                    <View style={[styles.input, {paddingVertical:6}]}> 
+                        <Text style={{marginBottom:6, color:'#4b5563'}}>Category</Text>
+                        <View style={{flexDirection:'row', flexWrap:'wrap', gap:8}}>
+                            {['vegetables','fruits','crops','pesticides','fertilizer'].map((opt) => (
+                                <TouchableOpacity key={opt} onPress={()=>setNewProduct(p=>({...p,category: categoryMatchKey(opt)}))} style={{paddingHorizontal:10, paddingVertical:6, borderRadius:16, borderWidth:1, borderColor: newProduct.category===categoryMatchKey(opt)?'#16a34a':'#d1d5db', backgroundColor: newProduct.category===categoryMatchKey(opt)?'#dcfce7':'#fff'}}>
+                                    <Text style={{color: newProduct.category===categoryMatchKey(opt)?'#065f46':'#374151'}}>{opt}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                    <TextInput placeholder="Image URL (optional)" style={styles.input} value={newProduct.imageUrl} onChangeText={(t)=>setNewProduct(p=>({...p,imageUrl:t}))} />
+                    <TextInput placeholder="Description (optional)" style={[styles.input,{height:80}]} multiline value={newProduct.description} onChangeText={(t)=>setNewProduct(p=>({...p,description:t}))} />
+                    <View style={{flexDirection:'row', justifyContent:'flex-end', gap:10}}>
+                        <TouchableOpacity onPress={()=>setIsAddOpen(false)} style={{paddingHorizontal:16, paddingVertical:10, borderRadius:8, borderWidth:1, borderColor:'#6b7280'}}>
+                            <Text style={{color:'#6b7280', fontWeight:'600'}}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleAddProduct} style={{paddingHorizontal:16, paddingVertical:10, borderRadius:8, backgroundColor:'#10b981'}}>
+                            <Text style={{color:'white', fontWeight:'600'}}>Save</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             )}
         </ScrollView>
@@ -487,6 +535,15 @@ const styles = StyleSheet.create({
         color: '#6b7280',
         textAlign: 'center',
         marginTop: 5,
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: '#d1d5db',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        backgroundColor: 'white',
+        marginBottom: 10,
     },
 });
 

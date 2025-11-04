@@ -2,45 +2,63 @@
 
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Dimensions, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const { width } = Dimensions.get('window');
 
-// --- DUMMY DATA ---
-const DUMMY_PRODUCTS = [
-    { id: 'P001', name: 'High-Yield Wheat Seeds', stock: 1500, price: 1500, status: 'In Stock' },
-    { id: 'P002', name: 'Organic Pesticide', stock: 0, price: 950, status: 'Out of Stock' },
-    { id: 'P003', name: 'Tractor Oil (5L)', stock: 20, price: 3200, status: 'In Stock' },
-];
+import { addProduct, getMyProducts, ProductInput } from "../../utils/apiProducts";
 
 const ProductManagementScreen = () => {
-    const [products, setProducts] = useState(DUMMY_PRODUCTS);
+    const [products, setProducts] = useState<any[]>([]);
     const [isAdding, setIsAdding] = useState(false);
     const [newProduct, setNewProduct] = useState({ name: '', price: '', stock: '' });
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    const handleAddProduct = () => {
+    useEffect(() => {
+        const fetchMine = async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const data = await getMyProducts();
+                // Expecting { products: [...] }
+                setProducts(Array.isArray(data?.products) ? data.products : []);
+            } catch (e) {
+                setError(e instanceof Error ? e.message : 'Failed to load products');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchMine();
+    }, []);
+
+    const handleAddProduct = async () => {
         if (!newProduct.name || !newProduct.price || !newProduct.stock) {
             Alert.alert("Error", "Please fill in all fields.");
             return;
         }
-
         setLoading(true);
-        setTimeout(() => {
-            const addedProduct = {
-                id: `P${Math.floor(Math.random() * 1000)}`,
+        try {
+            const payload: ProductInput = {
                 name: newProduct.name,
-                stock: parseInt(newProduct.stock),
+                description: '',
                 price: parseFloat(newProduct.price),
-                status: 'In Stock',
+                unit: 'unit',
+                quantity: parseInt(newProduct.stock),
+                images: [],
             };
-            setProducts([addedProduct, ...products]);
+            await addProduct(payload);
+            const refreshed = await getMyProducts();
+            setProducts(Array.isArray(refreshed?.products) ? refreshed.products : []);
             setNewProduct({ name: '', price: '', stock: '' });
             setIsAdding(false);
-            setLoading(false);
             Alert.alert("Success", "Product added successfully!");
-        }, 1000);
+        } catch (e) {
+            Alert.alert("Error", e instanceof Error ? e.message : 'Failed to add product');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const getStatusStyle = (status: string) => {
@@ -84,6 +102,8 @@ const ProductManagementScreen = () => {
                 {/* Product List */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>My Listed Products ({products.length})</Text>
+                    {error ? <Text style={{ color: '#dc2626', marginBottom: 8 }}>{error}</Text> : null}
+                    {loading ? <ActivityIndicator /> : null}
                     <View style={styles.listHeader}>
                         <Text style={[styles.headerText, { flex: 3 }]}>Product Name</Text>
                         <Text style={[styles.headerText, { flex: 1.5, textAlign: 'center' }]}>Stock</Text>
@@ -94,13 +114,13 @@ const ProductManagementScreen = () => {
                     {products.map((product) => {
                         const statusStyle = getStatusStyle(product.status);
                         return (
-                            <View key={product.id} style={styles.productRow}>
+                            <View key={product._id || product.id} style={styles.productRow}>
                                 <Text style={[styles.productCell, { flex: 3, fontWeight: '600' }]}>{product.name}</Text>
-                                <Text style={[styles.productCell, { flex: 1.5, textAlign: 'center' }]}>{product.stock}</Text>
-                                <Text style={[styles.productCell, { flex: 2, textAlign: 'center' }]}>{product.price.toLocaleString()}</Text>
+                                <Text style={[styles.productCell, { flex: 1.5, textAlign: 'center' }]}>{product.quantity ?? product.stock}</Text>
+                                <Text style={[styles.productCell, { flex: 2, textAlign: 'center' }]}>{(product.price ?? 0).toLocaleString()}</Text>
                                 <View style={[styles.productCell, { flex: 2, alignItems: 'flex-end' }]}>
                                     <Text style={[styles.statusBadge, { backgroundColor: statusStyle.bg, color: statusStyle.color }]}>
-                                        {product.status}
+                                        {product.isAvailable === false ? 'Out of Stock' : 'In Stock'}
                                     </Text>
                                 </View>
                             </View>

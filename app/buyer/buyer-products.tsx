@@ -17,7 +17,8 @@ import {
 
 const { width } = Dimensions.get('window');
 
-// --- DUMMY DATA ---
+import axios from "axios";
+import { getAllProducts } from "../../utils/apiProducts";
 interface Product {
     _id: string;
     name: string;
@@ -29,13 +30,7 @@ interface Product {
     images?: string[];
 }
 
-const DUMMY_ALL_PRODUCTS: Product[] = [
-    { _id: "P1", name: "Premium Organic Wheat", price: 45, unit: "kg", isAvailable: true, category: "crops", images: [''] },
-    { _id: "P2", name: "Fresh Mangoes (Sindhri)", price: 200, unit: "kg", isAvailable: false, category: "fruits", images: [''] },
-    { _id: "P3", name: "Potassium Nitrate (5kg)", price: 1500, unit: "bag", isAvailable: true, category: "fertilizer", images: [''] },
-    { _id: "P4", name: "Carrots (Winter)", price: 80, unit: "kg", isAvailable: true, category: "vegetables", images: [''] },
-    { _id: "P5", name: "Bio-Pesticide Spray", price: 950, unit: "L", isAvailable: true, category: "pesticides", images: [''] },
-];
+//
 
 const categories = [
     { id: "all", name: "All Products" },
@@ -60,27 +55,38 @@ const BuyerProductsScreen = () => {
     };
 
     const fetchProducts = async () => {
-        // Simulate API call and loading delay
         setLoading(true);
         setError("");
-        await new Promise(resolve => setTimeout(resolve, 800)); 
-        
-        // Mock success with dummy data
-        setProducts(DUMMY_ALL_PRODUCTS);
-        setLoading(false);
+        try {
+            const data = await getAllProducts();
+            const list = Array.isArray(data?.products) ? data.products : [];
+            setProducts(list);
+        } catch (e: any) {
+            setError(e?.message || 'Failed to load products');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const addToCart = async (productId: string) => {
-        showToast("Product added to Cart (Mock)");
-        // In real app: router.push('/buyer/buyer-cart')
+        try {
+            const res = await axios.post('https://agrofarm-vd8i.onrender.com/api/cart/add', { productId, quantity: 1 }, { withCredentials: true });
+            if (res.status !== 200) throw new Error(res.data?.message || 'Failed to add to cart');
+            showToast(res.data?.message || 'Added to cart');
+        } catch (e: any) {
+            showToast(e?.message || 'Failed to add to cart', true);
+        }
     };
 
     const addToWishlist = async (productId: string) => {
-        setWishlistItems(prev => prev.includes(productId) 
-            ? prev.filter(id => id !== productId) 
-            : [...prev, productId]
-        );
-        showToast(wishlistItems.includes(productId) ? "Removed from Wishlist (Mock)" : "Added to Wishlist (Mock)");
+        try {
+            const res = await axios.post('https://agrofarm-vd8i.onrender.com/api/wishlist/add', { productId }, { withCredentials: true });
+            if (res.status !== 200) throw new Error(res.data?.message || 'Failed to add to wishlist');
+            setWishlistItems(prev => [...prev, productId]);
+            showToast(res.data?.message || 'Added to wishlist');
+        } catch (e: any) {
+            showToast(e?.message || 'Failed to add to wishlist', true);
+        }
     };
 
     useEffect(() => {
@@ -209,9 +215,7 @@ const BuyerProductsScreen = () => {
                                     <Text style={styles.productPrice}>
                                         Rs. {product.price?.toLocaleString()}
                                     </Text>
-                                    <Text style={styles.productUnit}>
-                                        / {product.unit}
-                                    </Text>
+                                    <Text style={styles.productUnit}>/ {product.unit}</Text>
                                 </View>
                                 
                                 <Text style={styles.productCategory}>{product.category}</Text>

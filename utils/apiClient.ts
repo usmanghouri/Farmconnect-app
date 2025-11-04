@@ -35,13 +35,16 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response && error.response.status === 401) {
-            console.log('401 Unauthorized: Token might be expired. Redirecting to login.');
-            // In a real app, you would clear the token and navigate to the login screen.
-            // SecureStore.deleteItemAsync(TOKEN_KEY); 
-            // router.replace('/');
+        const status = error?.response?.status;
+        const method = error?.config?.method?.toUpperCase();
+        const url = error?.config?.baseURL ? `${error.config.baseURL}${error.config.url}` : error?.config?.url;
+        const serverMsg = error?.response?.data?.message;
+        if (status === 401) {
+            console.log('401 Unauthorized: Token might be expired.');
         }
-        return Promise.reject(error);
+        const message = serverMsg || error.message || 'Request failed';
+        const wrapped = new Error(`${message} (${method} ${url} -> ${status || 'ERR'})`);
+        return Promise.reject(wrapped);
     }
 );
 

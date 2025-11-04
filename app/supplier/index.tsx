@@ -4,7 +4,9 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
 import { Link, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { logoutUser } from "../../utils/apiAuth";
+import { getMyProducts } from "../../utils/apiProducts";
 
 const { width } = Dimensions.get('window');
 
@@ -63,13 +65,32 @@ const SupplierDashboard = () => {
   const router = useRouter();
 
   useEffect(() => {
-    setTimeout(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const my = await getMyProducts();
+        setProductsCount(Array.isArray(my?.products) ? my.products.length : 0);
+        // Keep dummy orders/revenue until APIs exist
         setActiveOrdersCount(DUMMY_ORDERS.length);
-        setProductsCount(DUMMY_PRODUCT_COUNT);
         setRevenue(DUMMY_REVENUE);
+      } catch (e) {
+      } finally {
         setLoading(false);
-    }, 800);
+      }
+    };
+    load();
   }, []);
+
+  const handleLogout = () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to log out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Logout", style: "destructive", onPress: async () => { try { await logoutUser('Supplier'); } catch {}; router.replace('/'); } },
+      ]
+    );
+  };
 
   const getStatusInfo = (status: string) => {
     switch (status?.toLowerCase()) {
@@ -90,7 +111,17 @@ const SupplierDashboard = () => {
   return (
     <GradientBackground>
       <ScrollView style={styles.contentScrollView} contentContainerStyle={styles.contentContainer}>
-        <Text style={styles.headerTitle}>Supplier Dashboard</Text>
+        <View style={styles.headerBar}>
+          <Text style={styles.headerTitle}>Supplier Dashboard</Text>
+          <View style={{flexDirection:'row', alignItems:'center', gap:12}}>
+            <TouchableOpacity onPress={() => router.push('/supplier/profile')}>
+              <Ionicons name="person-circle-outline" size={30} color="#1f2937" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={26} color="#dc2626" />
+            </TouchableOpacity>
+          </View>
+        </View>
         
         {loading && <ActivityIndicator size="large" color="#16a34a" style={{marginVertical: 20}} />}
 
@@ -191,6 +222,7 @@ const styles = StyleSheet.create({
   contentScrollView: { flex: 1, backgroundColor: 'transparent' },
   contentContainer: { padding: 20 },
   headerTitle: { fontSize: 28, fontWeight: '700', color: '#1f2937', marginBottom: 20 },
+  headerBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   errorText: { color: 'red', fontSize: 16 },
   

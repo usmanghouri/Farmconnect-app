@@ -4,7 +4,8 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
 import { Link, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { logoutUser } from "../../utils/apiAuth";
 
 const { width } = Dimensions.get('window');
 
@@ -89,12 +90,31 @@ const BuyerDashboard = () => {
     return <View style={styles.errorContainer}><Text style={styles.errorText}>Error loading dashboard: {error}</Text></View>;
   }
 
+  const handleLogout = () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to log out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Logout", style: "destructive", onPress: async () => { try { await logoutUser('Buyer'); } catch {}; router.replace('/'); } },
+      ]
+    );
+  };
+
   return (
-    // 1. Apply Gradient Wrapper
     <GradientBackground> 
-      {/* 2. ScrollView background is now transparent, showing the gradient */}
       <ScrollView style={styles.contentScrollView} contentContainerStyle={styles.contentContainer}>
-        <Text style={styles.headerTitle}>Buyer Dashboard</Text>
+        <View style={styles.headerBar}>
+          <Text style={styles.headerTitle}>Buyer Dashboard</Text>
+          <View style={{flexDirection:'row', alignItems:'center', gap:12}}>
+            <TouchableOpacity onPress={() => router.push('/buyer/profile')}>
+              <Ionicons name="person-circle-outline" size={30} color="#1f2937" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={26} color="#dc2626" />
+            </TouchableOpacity>
+          </View>
+        </View>
         
         {loading && <ActivityIndicator size="large" color="#3b82f6" style={{marginVertical: 20}} />}
 
@@ -159,7 +179,7 @@ const BuyerDashboard = () => {
                   <View key={order._id} style={styles.tableRow}>
                     <Text style={[styles.tableCell, { flex: 1.5 }]}>#{order._id.slice(-6)}</Text>
                     <Text style={[styles.tableCell, { flex: 2.5 }]}>{order.products.length} Items ({order.products[0]?.name})</Text>
-                    <View style={[styles.tableCell, { flex: 1.5 }]}>
+                    <View style={{ flex: 1.5, justifyContent: 'center' }}>
                       <Text style={[styles.statusBadge, { backgroundColor: statusInfo.bgColor, color: statusInfo.textColor }]}>
                         {statusInfo.text}
                       </Text>
@@ -187,12 +207,12 @@ const BuyerDashboard = () => {
           </View>
           <View style={styles.recommendedGrid}>
               {DUMMY_PRODUCTS.slice(0,2).map((product) => (
-                  <TouchableOpacity 
+              <TouchableOpacity 
                       key={product._id} 
                       style={styles.productItem}
                       onPress={() => router.push('/buyer/buyer-products')}
                   >
-                      <MaterialCommunityIcons name="seedling" size={24} color="#10b981" />
+                      <MaterialCommunityIcons name={"seedling" as any} size={24} color="#10b981" />
                       <View style={{flex: 1, marginLeft: 10}}>
                           <Text style={styles.productName} numberOfLines={1}>Recommended: {product.name}</Text>
                           <Text style={styles.productCategory}>{product.category}</Text>
@@ -217,7 +237,9 @@ const styles = StyleSheet.create({
   contentScrollView: { flex: 1, backgroundColor: 'transparent' }, 
   contentContainer: { padding: 15 },
   headerTitle: { fontSize: 28, fontWeight: '700', color: '#1f2937', marginBottom: 20 },
+  headerBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  errorText: { color: 'red', fontSize: 16 },
   
  // CARD STYLES: Uses specific color in component prop, but keeps separation styling here
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 30 },
